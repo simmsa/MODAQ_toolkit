@@ -133,4 +133,13 @@ class MessageProcessor:
         df = pd.DataFrame(self.messages)
         if "sec" in df.columns and "nanosec" in df.columns:
             df["timestamp"] = df["sec"] + df["nanosec"] * 1e-9
+
+        if "stamp" in df.columns:
+            df["sec"] = df["stamp"].apply(lambda t: t.sec)
+            df["nanosec"] = df["stamp"].apply(lambda t: t.nanosec)
+
+            df = df.drop(columns=["stamp"])
+
+            df["timestamp"] = df["sec"] + df["nanosec"] * 1e-9
+
         return df
