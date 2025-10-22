@@ -268,8 +268,17 @@ class MCAPParser:
 
         # Process for stage 2 (expand arrays, add time index, etc.)
         for topic, df in non_empty_topics.items():
+            logger.info(
+                f"Processing dataframe for topic: {topic} with shape {df.shape}"
+            )
             processed_df, _ = self._process_dataframe_for_stage2(df.copy())
-            result[topic] = processed_df
+            logger.info(f"  Stage 2 Processed DataFrame shape: {processed_df.shape}")
+
+            # Only include non-empty DataFrames in result
+            if not processed_df.empty:
+                result[topic] = processed_df
+            else:
+                logger.warning(f"Topic {topic} became empty after stage 2 processing, excluding from results")
 
         return result
 
