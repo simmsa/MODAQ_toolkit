@@ -16,6 +16,27 @@ def is_array_column(series):
     return False
 
 
+def _normalize_to_array(value):
+    """Normalize a value to an array, handling scalars and empty arrays.
+
+    Returns None for values that should be skipped (empty arrays, None, NaN).
+    Returns a list/array for valid values.
+    """
+    # Handle None/NaN
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return None
+
+    # Already an array or list
+    if isinstance(value, (np.ndarray, list)):
+        # Skip empty arrays
+        if len(value) == 0:
+            return None
+        return value
+
+    # Scalar value - wrap in list
+    return [value]
+
+
 def expand_array_columns_vertically(df):
     """Expands all columns containing arrays vertically, creating new rows for each array element."""
     array_columns = []
