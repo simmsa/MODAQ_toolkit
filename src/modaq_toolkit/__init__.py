@@ -2,7 +2,7 @@
 MODAQ Toolkit: High-performance MODAQ to Parquet converter and analysis toolkit
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .message_processing import (
     MessageProcessor,
