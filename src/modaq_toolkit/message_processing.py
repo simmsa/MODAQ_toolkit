@@ -114,6 +114,19 @@ class MessageProcessor:
         self.schema = schema
         self.messages: list[dict[str, Any]] = []
 
+        self.ros_type_to_numpy_type_map = {
+            # "float32": np.float32,
+            "float64": np.float64,
+            # "int8": np.int8,
+            # "int16": np.int16,
+            # "int32": np.int32,
+            # "int64": np.int64,
+            # "uint8": np.uint8,
+            # "uint16": np.uint16,
+            # "uint32": np.uint32,
+            "uint64": np.uint64,
+        }
+
     def process_message(self, msg: Any) -> None:
         message_dict = {}
         # print(self.schema)
@@ -160,8 +173,24 @@ class MessageProcessor:
         for field_name, field_spec in self.schema.items():
             if field_name == "header":
                 continue
-            value = getattr(msg, field_name)
-            message_dict[field_name] = value
+            try:
+                value = getattr(msg, field_name)
+
+                # Get the type from field_spec
+                field_type = field_spec.get("type")
+
+                # Try to convert to numpy type if applicable
+                if field_type in self.ros_type_to_numpy_type_map:
+                    numpy_dtype = self.ros_type_to_numpy_type_map[field_type]
+                    print(
+                        "Converting field:", field_name, "to numpy dtype:", numpy_dtype
+                    )
+                    message_dict[field_name] = np.array(value, dtype=numpy_dtype)
+                else:
+                    message_dict[field_name] = value
+
+            except (AttributeError, RuntimeError) as e:
+                logger.warning(f"Failed to get field '{field_name}': {e}")
 
         self.messages.append(message_dict)
 
