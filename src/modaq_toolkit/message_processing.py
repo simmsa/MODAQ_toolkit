@@ -116,6 +116,42 @@ class MessageProcessor:
 
     def process_message(self, msg: Any) -> None:
         message_dict = {}
+        # print(self.schema)
+        # Typical entry
+        # data = {
+        #     "header": {
+        #         "type": "std_msgs/Header",
+        #         "is_array": False,
+        #         "default": None,
+        #         "fields": {
+        #             "std_msgs/Header": {
+        #                 "type": "MSG:",
+        #                 "is_array": False,
+        #                 "default": None,
+        #             },
+        #             "stamp": {
+        #                 "type": "builtin_interfaces/Time",
+        #                 "is_array": False,
+        #                 "default": None,
+        #             },
+        #             "frame_id": {
+        #                 "type": "string",
+        #                 "is_array": False,
+        #                 "default": None,
+        #             },
+        #         },
+        #     },
+        #     "ain0": {"type": "float64", "is_array": True, "default": None},
+        #     "ain1": {"type": "float64", "is_array": True, "default": None},
+        #     "ain2": {"type": "float64", "is_array": True, "default": None},
+        #     "ain3": {"type": "float64", "is_array": True, "default": None},
+        #     "ain4": {"type": "float64", "is_array": True, "default": None},
+        #     "ain5": {"type": "float64", "is_array": True, "default": None},
+        #     "ain6": {"type": "float64", "is_array": True, "default": None},
+        #     "ain7": {"type": "float64", "is_array": True, "default": None},
+        #     "core_timer": {"type": "uint64", "is_array": True, "default": None},
+        #     "system_time": {"type": "uint64", "is_array": True, "default": None},
+        # }
         if "header" in self.schema:
             message_dict["sec"] = msg.header.stamp.sec
             message_dict["nanosec"] = msg.header.stamp.nanosec
