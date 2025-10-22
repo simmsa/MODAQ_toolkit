@@ -134,11 +134,20 @@ class MCAPParser:
         self, df: pd.DataFrame
     ) -> tuple[pd.DataFrame, float]:
         """Process a dataframe for stage 2, returning the processed df and sample rate."""
+        # Early exit for empty DataFrame
+        if df.empty:
+            return df, None
+
         object_columns = [col for col in df.columns if is_array_column(df[col])]
 
         if object_columns:
             logger.debug("Found arrays, expanding for a2 processing")
             df = expand_array_columns_vertically(df)
+
+            # If all rows were skipped during expansion, return empty DataFrame
+            if df.empty:
+                return df, None
+
             df["time"] = pd.to_datetime(
                 df["system_time"], origin="unix", unit="ns", utc=True
             )
