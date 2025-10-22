@@ -13,11 +13,11 @@ from .message_processing import (
 from .parser import MCAPParser, process_mcap_dir_to_dataframes, process_mcap_files
 
 __all__ = [
-    "MessageProcessor",
     "MCAPParser",
-    "parse_ros_message_definition",
+    "MessageProcessor",
     "expand_array_columns_vertically",
     "is_array_column",
-    "process_mcap_files",
+    "parse_ros_message_definition",
     "process_mcap_dir_to_dataframes",
+    "process_mcap_files",
 ]
