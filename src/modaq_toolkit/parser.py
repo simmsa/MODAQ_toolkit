@@ -157,10 +157,15 @@ class MCAPParser:
             time_diffs = df.index.to_series().diff().dt.total_seconds()
             return df, 1 / time_diffs.mean()
         else:
-            df["time"] = pd.to_datetime(
-                df["timestamp"], origin="unix", unit="s", utc=True
-            )
-            df = df.set_index("time")
+            if "timestamp" not in df.columns:
+                logger.warning(
+                    f"No 'timestamp' column found for stage 2 processing on non-array data. Skipping inclusion of time index. Valid columns are {df.columns.tolist()}"
+                )
+            else:
+                df["time"] = pd.to_datetime(
+                    df["timestamp"], origin="unix", unit="s", utc=True
+                )
+                df = df.set_index("time")
             return df, None
 
     def _get_topic_timing(self, df: pd.DataFrame) -> TopicTiming:
