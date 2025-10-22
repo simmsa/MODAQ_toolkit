@@ -72,11 +72,12 @@ class MCAPParser:
         1.0  # Threshold for timing misalignment warnings
     )
 
-    def __init__(self, mcap_path: Path):
+    def __init__(self, mcap_path: Path, topics_to_skip: list[str] | None = None):
         self.mcap_path = mcap_path
         self.processors: dict[str, MessageProcessor] = {}
         self.schemas_by_topic: dict[str, dict] = {}
         self.dataframes: dict[str, pd.DataFrame] = {}
+        self.topics_to_skip = topics_to_skip if topics_to_skip else []
 
     def _process_channel(self, channel, schema, summary) -> None:
         """Process a single channel from the MCAP file."""
@@ -123,10 +124,11 @@ class MCAPParser:
 
             # Create dataframes
             for topic, processor in self.processors.items():
-                self.dataframes[topic] = processor.get_dataframe()
-                logger.debug(
-                    f"Topic {topic} DataFrame shape: {self.dataframes[topic].shape}"
-                )
+                if topic not in self.topics_to_skip:
+                    self.dataframes[topic] = processor.get_dataframe()
+                    logger.info(
+                        f"Topic {topic} DataFrame shape: {self.dataframes[topic].shape}"
+                    )
 
     def _process_dataframe_for_stage2(
         self, df: pd.DataFrame
