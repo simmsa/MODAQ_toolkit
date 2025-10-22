@@ -38,7 +38,19 @@ def _normalize_to_array(value):
 
 
 def expand_array_columns_vertically(df):
-    """Expands all columns containing arrays vertically, creating new rows for each array element."""
+    """Expands all columns containing arrays vertically, creating new rows for each array element.
+
+    Preservation strategy:
+    - Converts scalars to [scalar]
+    - Keeps non-empty arrays as-is
+    - Skips empty arrays []
+    - Concatenates all values vertically across all rows
+    - One observation per cell (no nested arrays)
+    """
+    # Early exit for empty DataFrame
+    if df.empty:
+        return df
+
     array_columns = []
     non_array_columns = []
     for col in df.columns:
@@ -51,19 +63,56 @@ def expand_array_columns_vertically(df):
     if not array_columns:
         return df
 
-    expanded_data = []
-    for idx, row in df.iterrows():
-        array_length = len(row[array_columns[0]])
-        for i in range(array_length):
-            new_row = {}
-            for col in non_array_columns:
-                new_row[col] = row[col]
-            for col in array_columns:
-                new_row[col] = row[col][i]
-            expanded_data.append(new_row)
+    # Collect all array values across all rows for each array column
+    # This implements the concatenation strategy: [a, b], [], [c] -> [a, b, c]
+    all_arrays = {col: [] for col in array_columns}
+    non_array_values = {col: [] for col in non_array_columns}
 
-    result_df = pd.DataFrame(expanded_data)
-    logger.debug(f"Expanded shape from {df.shape} to {result_df.shape}")
+    for idx, row in df.iterrows():
+        # Normalize each array column value
+        normalized_arrays = {}
+        for col in array_columns:
+            normalized = _normalize_to_array(row[col])
+            normalized_arrays[col] = normalized
+
+        # Check if all array columns are None (should skip this row entirely)
+        if all(arr is None for arr in normalized_arrays.values()):
+            logger.debug(f"Skipping row {idx}: all array columns are empty")
+            continue
+
+        # Get the maximum length among non-None arrays in this row
+        lengths = [len(arr) for arr in normalized_arrays.values() if arr is not None]
+        if not lengths:
+            continue
+
+        max_length = max(lengths)
+
+        # Validate: all non-None arrays should have the same length
+        if not all(length == max_length for length in lengths):
+            logger.warning(f"Row {idx} has arrays of inconsistent lengths: {lengths}, skipping")
+            continue
+
+        # Concatenate this row's arrays to the master list
+        for col in array_columns:
+            if normalized_arrays[col] is not None:
+                all_arrays[col].extend(normalized_arrays[col])
+            else:
+                # If one column is None but others aren't, pad with NaN
+                all_arrays[col].extend([np.nan] * max_length)
+
+        # Repeat non-array values to match array length
+        for col in non_array_columns:
+            non_array_values[col].extend([row[col]] * max_length)
+
+    # Build the result DataFrame
+    result_data = {}
+    for col in non_array_columns:
+        result_data[col] = non_array_values[col]
+    for col in array_columns:
+        result_data[col] = all_arrays[col]
+
+    result_df = pd.DataFrame(result_data)
+    logger.info(f"Expanded shape from {df.shape} to {result_df.shape}")
     return result_df
 
 
