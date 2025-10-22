@@ -26,6 +26,12 @@ def _normalize_to_array(value):
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return None
 
+    # Handle numpy scalars (from type conversion) - extract Python value
+    if isinstance(value, np.generic) or (
+        isinstance(value, np.ndarray) and value.ndim == 0
+    ):
+        return [value.item()]
+
     # Already an array or list
     if isinstance(value, (np.ndarray, list)):
         # Skip empty arrays
