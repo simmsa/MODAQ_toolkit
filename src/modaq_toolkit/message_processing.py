@@ -129,6 +129,15 @@ def parse_ros_message_definition(definition: str | bytes) -> dict[str, Any]:
     else:
         definition_str = definition
 
+    # ROS message constant definitions to skip (not actual message fields)
+    ROS_CONSTANTS = {
+        "DEBUG=10",
+        "INFO=20",
+        "WARN=30",
+        "ERROR=40",
+        "FATAL=50",
+    }
+
     message_spec: dict[str, dict] = {}
     sections = definition_str.split(
         "================================================================================"
@@ -143,6 +152,12 @@ def parse_ros_message_definition(definition: str | bytes) -> dict[str, Any]:
         parts = line.split()
         if len(parts) >= 2:
             field_type, field_name = parts[0], parts[1]
+
+            # Skip known ROS logging level constants
+            if field_name in ROS_CONSTANTS:
+                logger.debug(f"Skipping ROS constant: {field_name}")
+                continue
+
             is_array = field_type.endswith("[]")
             if is_array:
                 field_type = field_type[:-2]
