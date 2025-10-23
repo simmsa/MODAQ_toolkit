@@ -78,6 +78,7 @@ class MCAPParser:
         self.schemas_by_topic: dict[str, dict] = {}
         self.dataframes: dict[str, pd.DataFrame] = {}
         self.topics_to_skip = topics_to_skip if topics_to_skip else []
+        self._processed = False  # Track whether read_mcap() has been called
 
     def _process_channel(self, channel, schema, summary) -> None:
         """Process a single channel from the MCAP file."""
@@ -129,6 +130,9 @@ class MCAPParser:
                     logger.info(
                         f"Topic {topic} DataFrame shape: {self.dataframes[topic].shape}"
                     )
+
+        # Mark as processed
+        self._processed = True
 
     def _process_dataframe_for_stage2(
         self,
@@ -289,6 +293,8 @@ class MCAPParser:
         """
         Return a dictionary of processed dataframes without saving to disk.
 
+        Automatically calls read_mcap() if it hasn't been called yet.
+
         Args:
             process_stage2: If True, process dataframes for stage 2 (expand arrays, etc.)
             stage_2_convert_ros_time_to_utc_datetime_index: If True, convert ROS time (sec,nanosec) to UTC datetime index
@@ -298,6 +304,10 @@ class MCAPParser:
         Returns:
             A dictionary with topic names as keys and processed dataframes as values
         """
+        # Auto-call read_mcap() if not yet processed
+        if not self._processed:
+            self.read_mcap()
+
         result = {}
 
         # Filter out empty dataframes
@@ -332,7 +342,15 @@ class MCAPParser:
         return result
 
     def create_output(self, output_dir: Path, stage: str = "a1_one_to_one") -> None:
-        """Create partitioned parquet files and metadata JSON for each topic."""
+        """
+        Create partitioned parquet files and metadata JSON for each topic.
+
+        Automatically calls read_mcap() if it hasn't been called yet.
+        """
+        # Auto-call read_mcap() if not yet processed
+        if not self._processed:
+            self.read_mcap()
+
         stage_dir = output_dir / stage
         metadata_dir = output_dir / "metadata"
         stage_dir.mkdir(parents=True, exist_ok=True)
