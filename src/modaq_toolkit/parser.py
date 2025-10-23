@@ -556,7 +556,10 @@ def process_mcap_and_get_dataframes(
 
 
 def process_mcap_dir_to_dataframes(
-    input_dir: Path, process_stage2: bool = True, concat_by_topic: bool = True
+    input_dir: Path,
+    process_stage2: bool = True,
+    concat_by_topic: bool = True,
+    topics_to_skip: list[str] | None = None,
 ) -> dict[str, dict[str, pd.DataFrame] | pd.DataFrame]:
     """
     Process all MCAP files in a directory and return them as a dictionary
@@ -567,6 +570,7 @@ def process_mcap_dir_to_dataframes(
         process_stage2: If True, process dataframes with stage 2 processing
         concat_by_topic: If True, concatenate all dataframes for each topic within a group
                         If False, return a dictionary of dataframes per topic
+        topics_to_skip: Optional list of topic names to skip during processing
 
     Returns:
         A dictionary where:
@@ -600,7 +604,9 @@ def process_mcap_dir_to_dataframes(
     # Process each file
     for mcap_file, group_name in mcap_files:
         # Get dataframes from current file
-        topic_dfs = process_mcap_and_get_dataframes(mcap_file, process_stage2)
+        topic_dfs = process_mcap_and_get_dataframes(
+            mcap_file, process_stage2, topics_to_skip=topics_to_skip
+        )
 
         # Skip if no dataframes were found
         if not topic_dfs:
