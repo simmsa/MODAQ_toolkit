@@ -126,8 +126,18 @@ def expand_array_columns_vertically(df):
     return result_df
 
 
-def parse_ros_message_definition(definition: str | bytes) -> dict[str, Any]:
-    """Parse a ROS message definition into a dictionary describing the message structure."""
+def parse_ros_message_definition(
+    definition: str | bytes, _all_sections: list[str] | None = None
+) -> dict[str, Any]:
+    """Parse a ROS message definition into a dictionary describing the message structure.
+
+    Args:
+        definition: The ROS message definition string or bytes
+        _all_sections: Internal parameter - full list of all schema sections for recursive lookups
+
+    Returns:
+        Dictionary mapping field names to their specifications
+    """
     if isinstance(definition, bytes):
         try:
             definition_str = definition.decode("utf-8")
