@@ -134,6 +134,23 @@ def expand_array_columns_vertically(df):
         result_data[col] = all_arrays[col]
 
     result_df = pd.DataFrame(result_data)
+
+    # Preserve dtypes from original DataFrame
+    # When repeating values, pandas may upcast types (e.g., int32 -> int64)
+    # We need to explicitly restore the original dtypes
+    for col in df.columns:
+        if col in result_df.columns:
+            original_dtype = df[col].dtype
+            # Only apply dtype if it's not object (which might contain arrays/complex types)
+            if original_dtype != "object" and result_df[col].dtype != original_dtype:
+                try:
+                    result_df[col] = result_df[col].astype(original_dtype)
+                except (ValueError, TypeError):
+                    # If conversion fails, keep the inferred dtype
+                    logger.debug(
+                        f"Could not preserve dtype {original_dtype} for column {col}"
+                    )
+
     logger.info(f"Expanded shape from {df.shape} to {result_df.shape}")
     return result_df
 
