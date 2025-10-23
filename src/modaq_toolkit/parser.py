@@ -653,25 +653,63 @@ def process_mcap_dir_to_dataframes(
     return result
 
 
-def process_single_file(mcap_file: Path, group: str, output_path: Path) -> None:
-    """Process a single MCAP file - this function runs in its own process."""
+def process_single_file(
+    mcap_file: Path,
+    group: str,
+    output_path: Path,
+    topics_to_skip: list[str] | None = None,
+    process_stage1: bool = True,
+    process_stage2: bool = True,
+    stage1_dir: str | Path = "a1_one_to_one",
+    stage2_dir: str | Path = "a2_unpacked",
+) -> None:
+    """
+    Process a single MCAP file - this function runs in its own process.
+
+    Args:
+        mcap_file: Path to the MCAP file to process
+        group: Group name for organizing output
+        output_path: Base output directory
+        topics_to_skip: Optional list of topic names to skip during processing
+        process_stage1: If True, process and save stage 1 output.
+                       Stage 1 preserves one-to-one ROS message structure where each row is
+                       a single ROS message. Array fields remain packed within rows.
+        process_stage2: If True, process and save stage 2 output.
+                       Stage 2 unpacks array fields into separate rows, where each array element
+                       becomes its own row. This format is recommended for analysis as it follows
+                       tidy data principles: each variable is a column, each observation is a row,
+                       and each value is a single cell.
+        stage1_dir: Directory name for stage 1 output (default: "a1_one_to_one")
+        stage2_dir: Directory name for stage 2 output (default: "a2_unpacked")
+    """
     logger.info(f"\nProcessing file {mcap_file.name} from group '{group}'")
+
+    # Convert to Path objects
+    stage1_path = Path(stage1_dir)
+    stage2_path = Path(stage2_dir)
 
     # Create group-specific output directories
     group_output = output_path / group
     group_metadata = group_output / "metadata"
-    (group_output / "a1_one_to_one").mkdir(parents=True, exist_ok=True)
-    (group_output / "a2_real_data").mkdir(parents=True, exist_ok=True)
+
+    if process_stage1:
+        (group_output / stage1_path).mkdir(parents=True, exist_ok=True)
+    if process_stage2:
+        (group_output / stage2_path).mkdir(parents=True, exist_ok=True)
+
     group_metadata.mkdir(parents=True, exist_ok=True)
 
-    parser = MCAPParser(mcap_file)
+    parser = MCAPParser(mcap_file, topics_to_skip=topics_to_skip)
     parser.read_mcap()
     original_dataframes = parser.dataframes.copy()
 
-    parser.create_output(group_output, stage="a1_one_to_one")
-    logger.info("Processing expanded arrays")
-    parser.dataframes = original_dataframes
-    parser.create_output(group_output, stage="a2_real_data")
+    if process_stage1:
+        parser.create_output(group_output, stage=str(stage1_path))
+
+    if process_stage2:
+        logger.info("Processing expanded arrays")
+        parser.dataframes = original_dataframes
+        parser.create_output(group_output, stage=str(stage2_path))
 
     logger.info(f"Completed processing {mcap_file.name}\n")
     return mcap_file.name
@@ -681,8 +719,25 @@ async def process_mcap_files_parallel(
     mcap_files: list[tuple[Path, str]],
     output_path: Path,
     max_workers: int | None = None,
+    topics_to_skip: list[str] | None = None,
+    process_stage1: bool = True,
+    process_stage2: bool = True,
+    stage1_dir: str | Path = "a1_one_to_one",
+    stage2_dir: str | Path = "a2_unpacked",
 ) -> None:
-    """Process MCAP files in parallel using ProcessPoolExecutor."""
+    """
+    Process MCAP files in parallel using ProcessPoolExecutor.
+
+    Args:
+        mcap_files: List of (file_path, group) tuples to process
+        output_path: Base output directory
+        max_workers: Number of parallel workers (default: CPU count - 1)
+        topics_to_skip: Optional list of topic names to skip during processing
+        process_stage1: If True, process and save stage 1 (one-to-one ROS message) output
+        process_stage2: If True, process and save stage 2 (unpacked arrays) output
+        stage1_dir: Directory name for stage 1 output (default: "a1_one_to_one")
+        stage2_dir: Directory name for stage 2 output (default: "a2_unpacked")
+    """
     if max_workers is None:
         # Use CPU count - 1 to leave one core free for system tasks
         max_workers = max(1, multiprocessing.cpu_count() - 1)
@@ -694,7 +749,16 @@ async def process_mcap_files_parallel(
         # Create tasks for all files
         futures = [
             loop.run_in_executor(
-                pool, process_single_file, mcap_file, group, output_path
+                pool,
+                process_single_file,
+                mcap_file,
+                group,
+                output_path,
+                topics_to_skip,
+                process_stage1,
+                process_stage2,
+                stage1_dir,
+                stage2_dir,
             )
             for mcap_file, group in mcap_files
         ]
@@ -710,15 +774,33 @@ async def process_mcap_files_parallel(
 
 
 def process_mcap_files(
-    input_dir: str, output_dir: str, async_processing: bool = False
+    input_dir: str,
+    output_dir: str,
+    async_processing: bool = False,
+    topics_to_skip: list[str] | None = None,
+    process_stage1: bool = True,
+    process_stage2: bool = True,
+    stage1_dir: str | Path = "a1_one_to_one",
+    stage2_dir: str | Path = "a2_unpacked",
 ) -> None:
     """
-    Process all MCAP files in a directory and its subdirectories with single read and dual output.
+    Process all MCAP files in a directory and its subdirectories
 
     Args:
         input_dir: Input directory containing MCAP files
         output_dir: Output directory for processed files
         async_processing: If True, process files in parallel using multiple CPU cores
+        topics_to_skip: Optional list of topic names to skip during processing
+        process_stage1: If True, process and save stage 1 output.
+                       Stage 1 preserves one-to-one ROS message structure where each row is
+                       a single ROS message. Array fields remain packed within rows.
+        process_stage2: If True, process and save stage 2 output.
+                       Stage 2 unpacks array fields into separate rows, where each array element
+                       becomes its own row. This format is recommended for analysis as it follows
+                       tidy data principles: each variable is a column, each observation is a row,
+                       and each value is a single cell.
+        stage1_dir: Directory name for stage 1 output (default: "a1_one_to_one")
+        stage2_dir: Directory name for stage 2 output (default: "a2_unpacked")
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -738,7 +820,17 @@ def process_mcap_files(
 
     if async_processing:
         try:
-            asyncio.run(process_mcap_files_parallel(mcap_files, output_path))
+            asyncio.run(
+                process_mcap_files_parallel(
+                    mcap_files,
+                    output_path,
+                    topics_to_skip=topics_to_skip,
+                    process_stage1=process_stage1,
+                    process_stage2=process_stage2,
+                    stage1_dir=stage1_dir,
+                    stage2_dir=stage2_dir,
+                )
+            )
         except KeyboardInterrupt:
             logger.warning("\nProcessing interrupted by user")
             return
@@ -746,7 +838,16 @@ def process_mcap_files(
         # Sequential processing
         for mcap_file, group in mcap_files:
             try:
-                process_single_file(mcap_file, group, output_path)
+                process_single_file(
+                    mcap_file,
+                    group,
+                    output_path,
+                    topics_to_skip=topics_to_skip,
+                    process_stage1=process_stage1,
+                    process_stage2=process_stage2,
+                    stage1_dir=stage1_dir,
+                    stage2_dir=stage2_dir,
+                )
             except KeyboardInterrupt:
                 logger.warning("\nProcessing interrupted by user")
                 return
