@@ -530,7 +530,9 @@ def get_mcap_files(input_path: Path) -> list[tuple[Path, str]]:
 
 
 def process_mcap_and_get_dataframes(
-    mcap_file: Path, process_stage2: bool = False
+    mcap_file: Path,
+    process_stage2: bool = True,
+    topics_to_skip: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """
     Process a single MCAP file and return the dataframes without saving to disk.
@@ -538,6 +540,7 @@ def process_mcap_and_get_dataframes(
     Args:
         mcap_file: Path to the MCAP file
         process_stage2: If True, process dataframes for stage 2 (expand arrays, etc.)
+        topics_to_skip: Optional list of topic names to skip during processing
 
     Returns:
         A dictionary with topic names as keys and processed dataframes as values
@@ -545,7 +548,7 @@ def process_mcap_and_get_dataframes(
 
     logger.info(f"Processing file {mcap_file.name} for in-memory access")
 
-    parser = MCAPParser(mcap_file)
+    parser = MCAPParser(mcap_file, topics_to_skip=topics_to_skip)
     parser.read_mcap()
 
     # Get dataframes with or without stage 2 processing
