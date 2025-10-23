@@ -94,9 +94,13 @@ def expand_array_columns_vertically(df):
         max_length = max(lengths)
 
         # Validate: all non-None arrays should have the same length
+        # This is a data integrity check - inconsistent array lengths indicate
+        # corrupted data or transmission errors that must be investigated
         if not all(length == max_length for length in lengths):
-            logger.warning(f"Row {idx} has arrays of inconsistent lengths: {lengths}, skipping")
-            continue
+            raise ValueError(
+                f"Data integrity error at row {idx}: Array columns have inconsistent lengths {lengths}. "
+                f"All nested arrays in a ROS message must have the same length. "
+            )
 
         # Concatenate this row's arrays to the master list
         for col in array_columns:
