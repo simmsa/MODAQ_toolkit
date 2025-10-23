@@ -246,67 +246,107 @@ class MessageProcessor:
             "uint64": np.uint64,
         }
 
+    def _apply_type_conversion(self, value: Any, ros_type: str) -> Any:
+        """Apply numpy type conversion if the ROS type is in the conversion map.
+
+        Args:
+            value: The value to convert (can be scalar or array)
+            ros_type: The ROS type string (e.g., "float64", "uint32")
+
+        Returns:
+            For scalars: numpy scalar with correct dtype (e.g., np.int32(5))
+            For arrays: numpy array with correct dtype
+            Otherwise: original value unchanged
+        """
+        if ros_type in self.ros_type_to_numpy_type_map:
+            numpy_dtype = self.ros_type_to_numpy_type_map[ros_type]
+
+            # Check if value is already an array/list
+            if isinstance(value, (list, np.ndarray)):
+                return np.array(value, dtype=numpy_dtype)
+            else:
+                # For scalars, return numpy scalar type (not wrapped in array)
+                # This ensures pandas can properly infer column dtype
+                return numpy_dtype(value)
+        return value
+
+    def _extract_nested_fields(
+        self, msg_obj: Any, field_spec: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Recursively extract fields from nested ROS message types.
+
+        This method handles complex message types like std_msgs/Header or
+        builtin_interfaces/Time by walking through their nested field structure
+        defined in the schema and extracting values from the message object.
+
+        Args:
+            msg_obj: The ROS message object to extract fields from
+            field_spec: The schema specification for this field (must have "fields" key)
+
+        Returns:
+            Dictionary mapping field names to their values (with type conversion applied)
+
+        Example:
+            For a header field with stamp (builtin_interfaces/Time), this extracts:
+            {
+                "sec": 1234567890,
+                "nanosec": 123456789,
+                "frame_id": "base_link"
+            }
+        """
+        result = {}
+
+        if "fields" not in field_spec:
+            return result
+
+        nested_fields = field_spec["fields"]
+
+        for nested_name, nested_spec in nested_fields.items():
+            # Skip MSG: marker entries (these are just schema metadata)
+            if nested_spec.get("type", "").startswith("MSG:"):
+                continue
+
+            try:
+                nested_value = getattr(msg_obj, nested_name)
+                nested_type = nested_spec.get("type")
+
+                # Recursively handle nested types (e.g., stamp is builtin_interfaces/Time)
+                if "fields" in nested_spec:
+                    sub_fields = self._extract_nested_fields(nested_value, nested_spec)
+                    result.update(sub_fields)
+                else:
+                    result[nested_name] = self._apply_type_conversion(
+                        nested_value, nested_type
+                    )
+
+            except (AttributeError, RuntimeError) as e:
+                logger.warning(f"Failed to extract nested field '{nested_name}': {e}")
+
+        return result
+
     def process_message(self, msg: Any) -> None:
+        """Process a ROS message and extract all fields according to the schema.
+
+        Handles both simple fields and nested message types (like std_msgs/Header).
+        Applies numpy type conversion based on the schema's ROS type definitions.
+        """
         message_dict = {}
-        # print(self.schema)
-        # Typical entry
-        # data = {
-        #     "header": {
-        #         "type": "std_msgs/Header",
-        #         "is_array": False,
-        #         "default": None,
-        #         "fields": {
-        #             "std_msgs/Header": {
-        #                 "type": "MSG:",
-        #                 "is_array": False,
-        #                 "default": None,
-        #             },
-        #             "stamp": {
-        #                 "type": "builtin_interfaces/Time",
-        #                 "is_array": False,
-        #                 "default": None,
-        #             },
-        #             "frame_id": {
-        #                 "type": "string",
-        #                 "is_array": False,
-        #                 "default": None,
-        #             },
-        #         },
-        #     },
-        #     "ain0": {"type": "float64", "is_array": True, "default": None},
-        #     "ain1": {"type": "float64", "is_array": True, "default": None},
-        #     "ain2": {"type": "float64", "is_array": True, "default": None},
-        #     "ain3": {"type": "float64", "is_array": True, "default": None},
-        #     "ain4": {"type": "float64", "is_array": True, "default": None},
-        #     "ain5": {"type": "float64", "is_array": True, "default": None},
-        #     "ain6": {"type": "float64", "is_array": True, "default": None},
-        #     "ain7": {"type": "float64", "is_array": True, "default": None},
-        #     "core_timer": {"type": "uint64", "is_array": True, "default": None},
-        #     "system_time": {"type": "uint64", "is_array": True, "default": None},
-        # }
-        if "header" in self.schema:
-            message_dict["sec"] = msg.header.stamp.sec
-            message_dict["nanosec"] = msg.header.stamp.nanosec
-            message_dict["frame_id"] = msg.header.frame_id
 
         for field_name, field_spec in self.schema.items():
-            if field_name == "header":
-                continue
             try:
                 value = getattr(msg, field_name)
-
-                # Get the type from field_spec
                 field_type = field_spec.get("type")
 
-                # Try to convert to numpy type if applicable
-                if field_type in self.ros_type_to_numpy_type_map:
-                    numpy_dtype = self.ros_type_to_numpy_type_map[field_type]
-                    print(
-                        "Converting field:", field_name, "to numpy dtype:", numpy_dtype
-                    )
-                    message_dict[field_name] = np.array(value, dtype=numpy_dtype)
+                # Check if this field has nested structure (e.g., header, pose, etc.)
+                if "fields" in field_spec:
+                    # Extract nested fields and flatten into message_dict
+                    nested_data = self._extract_nested_fields(value, field_spec)
+                    message_dict.update(nested_data)
                 else:
-                    message_dict[field_name] = value
+                    # Simple field - apply type conversion
+                    message_dict[field_name] = self._apply_type_conversion(
+                        value, field_type
+                    )
 
             except (AttributeError, RuntimeError) as e:
                 logger.warning(f"Failed to get field '{field_name}': {e}")
