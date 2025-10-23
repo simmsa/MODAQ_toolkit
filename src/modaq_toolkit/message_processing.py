@@ -159,9 +159,16 @@ def parse_ros_message_definition(
     }
 
     message_spec: dict[str, dict] = {}
-    sections = definition_str.split(
-        "================================================================================"
-    )
+
+    # Split into sections on first call, or use existing sections
+    if _all_sections is None:
+        sections = definition_str.split(
+            "================================================================================"
+        )
+        _all_sections = sections  # Preserve all sections for recursive calls
+    else:
+        sections = [definition_str]  # For recursive calls, only parse main section
+
     main_section = sections[0].strip()
 
     for line in main_section.split("\n"):
@@ -203,11 +210,18 @@ def parse_ros_message_definition(
                 "default": default_value,
             }
 
+            # For nested types (e.g., std_msgs/Header, builtin_interfaces/Time),
+            # search ALL available sections to find the type definition
             if "/" in field_type:
                 type_name = field_type.split("/")[-1]
-                for section in sections[1:]:
+                for section in _all_sections[
+                    1:
+                ]:  # Use all sections, not just local ones
                     if f"MSG: {field_type}" in section:
-                        nested_fields = parse_ros_message_definition(section)
+                        # Pass all sections to recursive call so deeply nested types can be found
+                        nested_fields = parse_ros_message_definition(
+                            section, _all_sections
+                        )
                         message_spec[field_name]["fields"] = nested_fields
                         break
 
