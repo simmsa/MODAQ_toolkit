@@ -278,7 +278,9 @@ class MCAPParser:
             if not processed_df.empty:
                 result[topic] = processed_df
             else:
-                logger.warning(f"Topic {topic} became empty after stage 2 processing, excluding from results")
+                logger.warning(
+                    f"Topic {topic} became empty after stage 2 processing, excluding from results"
+                )
 
         return result
 
