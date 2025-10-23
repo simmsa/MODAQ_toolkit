@@ -21,15 +21,27 @@ def _normalize_to_array(value):
 
     Returns None for values that should be skipped (empty arrays, None, NaN).
     Returns a list/array for valid values.
+
+    This preserves preserves numpy scalar dtypes (e.g., np.uint64, np.int32) to maintain
+    ROS type precision in the output data.
+
+    Note: Do NOT call .item() on numpy scalars as this converts them back to
+    Python types and loses dtype information.
     """
     # Handle None/NaN
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return None
 
-    # Handle numpy scalars (from type conversion) - extract Python value
-    if isinstance(value, np.generic) or (
-        isinstance(value, np.ndarray) and value.ndim == 0
-    ):
+    # Handle numpy scalars (from type conversion) - preserve dtype
+    if isinstance(value, np.generic):
+        # Keep numpy scalar wrapped in list to preserve dtype
+        # e.g., [np.float32(3.14)] not [3.14] (Python float)
+        return [value]
+
+    # Handle 0-dimensional numpy arrays
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        # Extract scalar value from 0-d array
+        # Note: 0-d arrays have already lost their context, so .item() is acceptable here
         return [value.item()]
 
     # Already an array or list
