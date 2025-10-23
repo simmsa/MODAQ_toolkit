@@ -234,15 +234,15 @@ class MessageProcessor:
         self.messages: list[dict[str, Any]] = []
 
         self.ros_type_to_numpy_type_map = {
-            # "float32": np.float32,
+            "float32": np.float32,
             "float64": np.float64,
-            # "int8": np.int8,
-            # "int16": np.int16,
-            # "int32": np.int32,
-            # "int64": np.int64,
-            # "uint8": np.uint8,
-            # "uint16": np.uint16,
-            # "uint32": np.uint32,
+            "int8": np.int8,
+            "int16": np.int16,
+            "int32": np.int32,
+            "int64": np.int64,
+            "uint8": np.uint8,
+            "uint16": np.uint16,
+            "uint32": np.uint32,
             "uint64": np.uint64,
         }
 
