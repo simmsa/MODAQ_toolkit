@@ -131,7 +131,10 @@ class MCAPParser:
                     )
 
     def _process_dataframe_for_stage2(
-        self, df: pd.DataFrame
+        self,
+        df: pd.DataFrame,
+        convert_ros_time_to_utc_datetime_index: bool = True,
+        remove_original_extra_time_columns: bool = True,
     ) -> tuple[pd.DataFrame, float]:
         """Process a dataframe for stage 2, returning the processed df and sample rate."""
         # Early exit for empty DataFrame
@@ -148,14 +151,46 @@ class MCAPParser:
             if df.empty:
                 return df, None
 
-            df["time"] = pd.to_datetime(
-                df["system_time"], origin="unix", unit="ns", utc=True
-            )
-            df = df.set_index("time")
-            df = df.drop(["sec", "nanosec", "frame_id", "timestamp"], axis="columns")
+            if convert_ros_time_to_utc_datetime_index:
+                # Create time index from available time columns
+                # Priority: system_time (high-res sensor data) > timestamp (header stamp)
+                if "system_time" in df.columns:
+                    df["time"] = pd.to_datetime(
+                        df["system_time"], origin="unix", unit="ns", utc=True
+                    )
+                    df = df.set_index("time")
+                    time_diffs = df.index.to_series().diff().dt.total_seconds()
+                    sample_rate = 1 / time_diffs.mean()
+                elif "timestamp" in df.columns:
+                    df["time"] = pd.to_datetime(
+                        df["timestamp"], origin="unix", unit="s", utc=True
+                    )
+                    df = df.set_index("time")
+                    time_diffs = df.index.to_series().diff().dt.total_seconds()
+                    sample_rate = 1 / time_diffs.mean()
+                else:
+                    logger.warning(
+                        f"No time column (system_time or timestamp) found after array expansion. "
+                        f"Skipping time indexing. Available columns: {df.columns.tolist()}"
+                    )
+                    sample_rate = None
 
-            time_diffs = df.index.to_series().diff().dt.total_seconds()
-            return df, 1 / time_diffs.mean()
+            if remove_original_extra_time_columns:
+                # Drop common time/header columns if they exist
+                cols_to_drop = [
+                    "sec",
+                    "nanosec",
+                    "frame_id",
+                    "timestamp",
+                    "system_time",
+                ]
+                existing_cols_to_drop = [
+                    col for col in cols_to_drop if col in df.columns
+                ]
+                if existing_cols_to_drop:
+                    df = df.drop(existing_cols_to_drop, axis="columns")
+
+            return df, sample_rate
         else:
             if "timestamp" not in df.columns:
                 logger.warning(
@@ -245,12 +280,20 @@ class MCAPParser:
                 f"  Latest ending topics: {', '.join(latest_end_topics)} at {latest_end}"
             )
 
-    def get_dataframes(self, process_stage2: bool = False) -> dict[str, pd.DataFrame]:
+    def get_dataframes(
+        self,
+        process_stage2: bool = False,
+        stage_2_convert_ros_time_to_utc_datetime_index: bool = True,
+        stage_2_remove_original_extra_time_columns: bool = True,
+    ) -> dict[str, pd.DataFrame]:
         """
         Return a dictionary of processed dataframes without saving to disk.
 
         Args:
             process_stage2: If True, process dataframes for stage 2 (expand arrays, etc.)
+            stage_2_convert_ros_time_to_utc_datetime_index: If True, convert ROS time (sec,nanosec) to UTC datetime index
+            stage_2_remove_original_extra_time_columns: If True, remove sec, nanosec, timestamp, system_time
+            columns from original dataframes
 
         Returns:
             A dictionary with topic names as keys and processed dataframes as values
@@ -271,7 +314,11 @@ class MCAPParser:
             logger.info(
                 f"Processing dataframe for topic: {topic} with shape {df.shape}"
             )
-            processed_df, _ = self._process_dataframe_for_stage2(df.copy())
+            processed_df, _ = self._process_dataframe_for_stage2(
+                df.copy(),
+                convert_ros_time_to_utc_datetime_index=stage_2_convert_ros_time_to_utc_datetime_index,
+                remove_original_extra_time_columns=stage_2_remove_original_extra_time_columns,
+            )
             logger.info(f"  Stage 2 Processed DataFrame shape: {processed_df.shape}")
 
             # Only include non-empty DataFrames in result
