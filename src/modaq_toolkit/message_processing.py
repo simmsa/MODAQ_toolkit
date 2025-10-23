@@ -155,18 +155,138 @@ def expand_array_columns_vertically(df):
     return result_df
 
 
+# Original custom schema parsing implementation
+# Replaced with library-based version below for better reliability and maintainability
+# def parse_ros_message_definition(
+#     definition: str | bytes, _all_sections: list[str] | None = None
+# ) -> dict[str, Any]:
+#     """Parse a ROS message definition into a dictionary describing the message structure.
+#
+#     Args:
+#         definition: The ROS message definition string or bytes
+#         _all_sections: Internal parameter - full list of all schema sections for recursive lookups
+#
+#     Returns:
+#         Dictionary mapping field names to their specifications
+#     """
+#     if isinstance(definition, bytes):
+#         try:
+#             definition_str = definition.decode("utf-8")
+#         except UnicodeDecodeError:
+#             try:
+#                 definition_str = definition.decode("ascii")
+#             except UnicodeDecodeError:
+#                 definition_str = definition.decode("latin-1")
+#     else:
+#         definition_str = definition
+#
+#     # ROS message constant definitions to skip (not actual message fields)
+#     ROS_CONSTANTS = {
+#         "DEBUG=10",
+#         "INFO=20",
+#         "WARN=30",
+#         "ERROR=40",
+#         "FATAL=50",
+#     }
+#
+#     message_spec: dict[str, dict] = {}
+#
+#     # Split into sections on first call, or use existing sections
+#     if _all_sections is None:
+#         sections = definition_str.split(
+#             "================================================================================"
+#         )
+#         _all_sections = sections  # Preserve all sections for recursive calls
+#     else:
+#         sections = [definition_str]  # For recursive calls, only parse main section
+#
+#     main_section = sections[0].strip()
+#
+#     for line in main_section.split("\n"):
+#         line = line.strip()
+#         if not line or line.startswith("#"):
+#             continue
+#
+#         parts = line.split()
+#         if len(parts) >= 2:
+#             field_type, field_name = parts[0], parts[1]
+#
+#             # Skip known ROS logging level constants
+#             if field_name in ROS_CONSTANTS:
+#                 logger.debug(f"Skipping ROS constant: {field_name}")
+#                 continue
+#
+#             is_array = field_type.endswith("[]")
+#             if is_array:
+#                 field_type = field_type[:-2]
+#
+#             default_value = None
+#             if len(parts) >= 3:
+#                 try:
+#                     raw_default = parts[2].strip('"')
+#                     if field_type == "bool":
+#                         default_value = raw_default.lower() == "true"
+#                     elif field_type == "string":
+#                         default_value = raw_default
+#                     elif field_type.startswith("float"):
+#                         default_value = float(raw_default)
+#                     elif field_type.startswith("int"):
+#                         default_value = int(raw_default)
+#                 except:
+#                     pass
+#
+#             message_spec[field_name] = {
+#                 "type": field_type,
+#                 "is_array": is_array,
+#                 "default": default_value,
+#             }
+#
+#             # For nested types (e.g., std_msgs/Header, builtin_interfaces/Time),
+#             # search ALL available sections to find the type definition
+#             if "/" in field_type:
+#                 type_name = field_type.split("/")[-1]
+#                 for section in _all_sections[
+#                     1:
+#                 ]:  # Use all sections, not just local ones
+#                     if f"MSG: {field_type}" in section:
+#                         # Pass all sections to recursive call so deeply nested types can be found
+#                         nested_fields = parse_ros_message_definition(
+#                             section, _all_sections
+#                         )
+#                         message_spec[field_name]["fields"] = nested_fields
+#                         break
+#
+#     return message_spec
+
+
 def parse_ros_message_definition(
     definition: str | bytes, _all_sections: list[str] | None = None
 ) -> dict[str, Any]:
     """Parse a ROS message definition into a dictionary describing the message structure.
 
+    This implementation uses the MCAP library's built-in rosidl_adapter parser
+    instead of custom regex-based parsing for better reliability and maintainability.
+
     Args:
         definition: The ROS message definition string or bytes
-        _all_sections: Internal parameter - full list of all schema sections for recursive lookups
+        _all_sections: Internal parameter - kept for API compatibility but not used
+                      (the library parser handles multi-section schemas internally)
 
     Returns:
-        Dictionary mapping field names to their specifications
+        Dictionary mapping field names to their specifications, with structure:
+        {
+            "field_name": {
+                "type": "type_name",
+                "is_array": bool,
+                "default": value or None,
+                "fields": {...}  # For nested types only
+            }
+        }
     """
+    from mcap_ros2._dynamic import _for_each_msgdef
+    from mcap_ros2._vendor.rosidl_adapter.parser import MessageSpecification
+
+    # Convert bytes to string if needed
     if isinstance(definition, bytes):
         try:
             definition_str = definition.decode("utf-8")
@@ -178,83 +298,71 @@ def parse_ros_message_definition(
     else:
         definition_str = definition
 
-    # ROS message constant definitions to skip (not actual message fields)
-    ROS_CONSTANTS = {
-        "DEBUG=10",
-        "INFO=20",
-        "WARN=30",
-        "ERROR=40",
-        "FATAL=50",
-    }
+    # Extract schema name from the first line or use a default
+    # The schema name is needed by _for_each_msgdef but in our use case
+    # we only care about the main (first) message definition
 
-    message_spec: dict[str, dict] = {}
+    # Use a placeholder schema name - the library will parse all sections
+    # and we'll just take the first one (which is the main message)
+    schema_name = "parsed/Message"
 
-    # Split into sections on first call, or use existing sections
-    if _all_sections is None:
-        sections = definition_str.split(
-            "================================================================================"
-        )
-        _all_sections = sections  # Preserve all sections for recursive calls
+    # Use the MCAP library's parser to handle all sections
+    all_msgdefs: dict[str, MessageSpecification] = {}
+    first_schema_name = None
+
+    def collect_msgdef(
+        cur_schema_name: str, short_name: str, msgdef: MessageSpecification
+    ):
+        """Collect all message definitions found in the schema."""
+        nonlocal first_schema_name
+        if first_schema_name is None:
+            first_schema_name = cur_schema_name
+        all_msgdefs[cur_schema_name] = msgdef
+        all_msgdefs[short_name] = msgdef
+
+    # Parse the schema using the library's built-in parser
+    _for_each_msgdef(schema_name, definition_str, collect_msgdef)
+
+    # Get the main message definition (the first one parsed)
+    # The first message parsed is always the main/top-level message
+    if not all_msgdefs:
+        # Empty schema
+        return {}
+
+    if first_schema_name and first_schema_name in all_msgdefs:
+        main_msgdef = all_msgdefs[first_schema_name]
     else:
-        sections = [definition_str]  # For recursive calls, only parse main section
+        # Fallback to first in dict
+        main_msgdef = next(iter(all_msgdefs.values()))
 
-    main_section = sections[0].strip()
+    def field_to_dict(field) -> dict[str, Any]:
+        """Convert a Field object to our dictionary format."""
+        # Build the type string (with package name if present)
+        if field.type.pkg_name:
+            type_str = f"{field.type.pkg_name}/{field.type.type}"
+        else:
+            type_str = field.type.type
 
-    for line in main_section.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
+        spec = {
+            "type": type_str,
+            "is_array": field.type.is_array,
+            "default": field.default_value,
+        }
 
-        parts = line.split()
-        if len(parts) >= 2:
-            field_type, field_name = parts[0], parts[1]
+        # Recursively handle nested types
+        if not field.type.is_primitive_type():
+            nested_key = f"{field.type.pkg_name}/{field.type.type}"
+            if nested_key in all_msgdefs:
+                nested_msgdef = all_msgdefs[nested_key]
+                spec["fields"] = {
+                    nested_field.name: field_to_dict(nested_field)
+                    for nested_field in nested_msgdef.fields
+                }
 
-            # Skip known ROS logging level constants
-            if field_name in ROS_CONSTANTS:
-                logger.debug(f"Skipping ROS constant: {field_name}")
-                continue
+        return spec
 
-            is_array = field_type.endswith("[]")
-            if is_array:
-                field_type = field_type[:-2]
-
-            default_value = None
-            if len(parts) >= 3:
-                try:
-                    raw_default = parts[2].strip('"')
-                    if field_type == "bool":
-                        default_value = raw_default.lower() == "true"
-                    elif field_type == "string":
-                        default_value = raw_default
-                    elif field_type.startswith("float"):
-                        default_value = float(raw_default)
-                    elif field_type.startswith("int"):
-                        default_value = int(raw_default)
-                except:
-                    pass
-
-            message_spec[field_name] = {
-                "type": field_type,
-                "is_array": is_array,
-                "default": default_value,
-            }
-
-            # For nested types (e.g., std_msgs/Header, builtin_interfaces/Time),
-            # search ALL available sections to find the type definition
-            if "/" in field_type:
-                type_name = field_type.split("/")[-1]
-                for section in _all_sections[
-                    1:
-                ]:  # Use all sections, not just local ones
-                    if f"MSG: {field_type}" in section:
-                        # Pass all sections to recursive call so deeply nested types can be found
-                        nested_fields = parse_ros_message_definition(
-                            section, _all_sections
-                        )
-                        message_spec[field_name]["fields"] = nested_fields
-                        break
-
-    return message_spec
+    # Convert all fields to our dictionary format
+    return {field.name: field_to_dict(field) for field in main_msgdef.fields}
 
 
 class MessageProcessor:
