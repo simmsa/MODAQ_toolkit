@@ -138,7 +138,7 @@ class MCAPParser:
         self,
         df: pd.DataFrame,
         convert_ros_time_to_utc_datetime_index: bool = True,
-        remove_original_extra_time_columns: bool = True,
+        remove_original_extra_time_columns: bool = False,
     ) -> tuple[pd.DataFrame, float]:
         """Process a dataframe for stage 2, returning the processed df and sample rate."""
         # Early exit for empty DataFrame
