@@ -288,7 +288,7 @@ class MCAPParser:
         self,
         process_stage2: bool = False,
         stage_2_convert_ros_time_to_utc_datetime_index: bool = True,
-        stage_2_remove_original_extra_time_columns: bool = True,
+        stage_2_remove_original_extra_time_columns: bool = False,
     ) -> dict[str, pd.DataFrame]:
         """
         Return a dictionary of processed dataframes without saving to disk.
